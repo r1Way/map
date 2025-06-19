@@ -1,11 +1,16 @@
 <!-- filepath: g:\project\2025\map\src\components\ChinaMap.vue -->
 <template>
   <div class="flex">
-    <div id="mapdiv" style="width: 70vw; height: 50vw; background: #EEE;"></div>
+    <div v-if="mode === 'easy'" id="mapdiv" style="width: 70vw; height: 50vw; background: #EEE;"></div>
+    <div v-else class="province-svg-box" v-html="provinceSvg"></div>
     <div class="side-panel">
-      <button class="map-btn" @click="randomHighlight">随机高亮省份</button><br/><br/>
+      <button class="map-btn" @click="toggleMode">{{ mode === 'easy' ? '切换到困难模式' : '切换到简单模式' }}</button>
+      <button class="map-btn" @click="randomHighlight">随机高亮省份</button>
       <button class="map-btn" @click="showInfo">显示省份信息</button>
-      <div id="info" class="info-box">{{ infoText }}</div>
+      <div id="info" class="info-box">
+        {{ infoText }}
+        <img v-if="infoImg" :src="infoImg" :alt="infoImgAlt" style="margin-top:12px;max-width:300px;display:block;">
+      </div>
     </div>
   </div>
 </template>
@@ -15,9 +20,14 @@ export default {
   name: "ChinaMap",
   data() {
     return {
+      recentIds: [], // 维护最近12次出现的省份id
       map: null,
       selectedId: null,
       infoText: "",
+      infoImg: "",
+      infoImgAlt: "",
+      mode: "easy", // easy or hard
+      provinceSvg: "",
       provinceInfo: {
         "CN-11": { name: "北京市", abbr: "京", capital: "北京" },
         "CN-12": { name: "天津市", abbr: "津", capital: "天津" },
@@ -57,14 +67,24 @@ export default {
     };
   },
   mounted() {
-    // 动态加载ammap和chinaLow.js
+    // 动态加载ammap和chinaHigh.js
     //原本用的是绝对路径/ammap/ammap.js，改为相对路径，因为打包后路径会变
     this.loadScript("ammap/ammap.js", () => {
-      this.loadScript("ammap/maps/js/chinaLow.js", this.initMap);
+      this.loadScript("ammap/maps/js/chinaHigh.js", this.initMap);
       this.loadCss("ammap/ammap.css");
     });
   },
   methods: {
+    toggleMode() {
+      this.mode = this.mode === "easy" ? "hard" : "easy";
+      // 切换到简单模式时恢复大地图
+      if (this.mode === "easy") {
+        this.provinceSvg = "";
+        this.$nextTick(() => {
+          this.initMap();
+        });
+      }
+    },
     loadScript(src, callback) {
       if (document.querySelector(`script[src="${src}"]`)) {
         callback && callback();
@@ -83,78 +103,99 @@ export default {
       document.head.appendChild(link);
     },
     initMap() {
-    this.map = new window.AmCharts.AmMap();
-    this.map.dataProvider = {
-        map: "chinaLow",
+      this.map = new window.AmCharts.AmMap();
+      this.map.dataProvider = {
+        map: "chinaHigh",
         getAreasFromMap: true
-    };
-    this.map.areasSettings = {
+      };
+      this.map.areasSettings = {
         autoZoom: false,
         selectedColor: "#FF0000",
         rollOverColor: "#E0E0E0",   // 鼠标悬停色
         outlineColor: "#000", // 新增：省份描边为黑色
         outlineThickness: 0.2   // 可选：描边宽度，默认1
-    };
-    // 监听地图初始化完成
-    this.map.addListener("init", () => {
+      };
+      // 监听地图初始化完成
+      this.map.addListener("init", () => {
         // 地图和区域已准备好，可以安全访问 this.map.areas
         this.infoText = "地图已加载，可以随机高亮省份";
-        // console.log('chinaLow:', window.AmCharts.maps.chinaLow);
-    });
-    this.map.write("mapdiv");
+        // console.log('chinaHigh:', window.AmCharts.maps.chinaHigh);
+      });
+      this.map.write("mapdiv");
     },
-randomHighlight() {
-    // 直接从 window.AmCharts.maps.chinaLow 获取所有区域 id
-    const mapData = window.AmCharts && window.AmCharts.maps && window.AmCharts.maps.chinaLow;
-    if (!mapData || !mapData.svg || !mapData.svg.g || !Array.isArray(mapData.svg.g.path)) {
-        this.infoText = "chinaLow 地图数据未加载或格式错误";
+    randomHighlight() {
+      // 直接从 window.AmCharts.maps.chinaHigh 获取所有区域 id
+      const mapData = window.AmCharts && window.AmCharts.maps && window.AmCharts.maps.chinaHigh;
+      if (!mapData || !mapData.svg || !mapData.svg.g || !Array.isArray(mapData.svg.g.path)) {
+        this.infoText = "chinaHigh 地图数据未加载或格式错误";
         return;
-    }
-    const areaIds = mapData.svg.g.path.map(a => a.id).filter(Boolean);
-    if (areaIds.length === 0) {
+      }
+      const areaIds = mapData.svg.g.path.map(a => a.id).filter(Boolean);
+      if (areaIds.length === 0) {
         this.infoText = "未找到省份数据";
         return;
+      }
+
+    // 过滤掉最近出现过的省份
+    const availableIds = areaIds.filter(id => !this.recentIds.includes(id));
+    let randomId;
+    if (availableIds.length > 0) {
+        const idx = Math.floor(Math.random() * availableIds.length);
+        randomId = availableIds[idx];
+    } else {
+        // 如果所有省份都出现过，允许重复
+        const idx = Math.floor(Math.random() * areaIds.length);
+        randomId = areaIds[idx];
     }
-    const idx = Math.floor(Math.random() * areaIds.length);
-    const randomId = areaIds[idx];
     this.selectedId = randomId;
-    console.log("随机选择省份：", randomId);
 
-    const paths = window.AmCharts.maps.chinaLow.svg.g.path;
-    const area = paths.find(item => item.id === randomId);
-    const title = area ? area.title : null;
-    console.log(title); // eg:输出 "Anhui"
+    // 更新队列，保证最多12个
+    this.recentIds.push(randomId);
+    if (this.recentIds.length > 12) {
+        this.recentIds.shift();
+    }
 
-  //     // 通过 SVG 直接操作高亮
-  //   this.$nextTick(() => {
-  //       // 先重置所有省份颜色
-  //       const svg = document.querySelector("#mapdiv svg");
-  //       if (svg) {
-  //           // 只重置有 aria-label 的 path
-  //           svg.querySelectorAll('path[aria-label]').forEach(path => {
-  //               path.setAttribute("fill", "#FFD000"); // 默认色 #E0E0E0
-  //           });
-  //           // 高亮选中省份
-  //           const selectedPath = Array.from(svg.querySelectorAll('path[aria-label]')).find(
-  //               p => (p.getAttribute("id") || p.getAttribute("data-id") || p.getAttribute("aria-label")).includes(title)
-  //           );
-  //           if (selectedPath) {
-  //               selectedPath.setAttribute("fill", "#E0E0E0"); // 高亮色 #FFD000
-  //           }
-  //       }
-  //   }
-  // );
-
-    // 通过 amMap API 高亮
-    if (this.map) {
+      // 简单模式高亮
+      if (this.mode === "easy" && this.map) {
         const areaObj = this.map.getObjectById(randomId);
         if (areaObj) {
-            this.map.selectObject(areaObj);
+          this.map.selectObject(areaObj);
         }
-    }
-    this.infoText = "";
+      }
 
-},
+      // 困难模式：只显示该省SVG
+      if (this.mode === "hard") {
+        // 获取该省的SVG path数据
+        const paths = mapData.svg.g.path;
+        const area = paths.find(item => item.id === randomId);
+        if (area) {
+          // 计算 path 的边界
+          const svgNS = "http://www.w3.org/2000/svg";
+          const tempSvg = document.createElementNS(svgNS, "svg");
+          const tempPath = document.createElementNS(svgNS, "path");
+          tempPath.setAttribute("d", area.d);
+          tempSvg.appendChild(tempPath);
+          document.body.appendChild(tempSvg);
+          const bbox = tempPath.getBBox();
+          document.body.removeChild(tempSvg);
+
+          // 判断是否为香港或澳门
+          const thinStroke = (randomId === "CN-91" || randomId === "CN-92") ? 0.04 : 0.8;
+
+          // 用 path 的实际边界作为 viewBox
+          const viewBox = `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`;
+          // 将stroke-width由2改为0.8，让黑色边界更细
+          const svgTpl = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="600" height="600">
+                <path d="${area.d}" fill="#FFD000" stroke="#000" stroke-width="${thinStroke}"/>
+            </svg>`;
+          this.provinceSvg = svgTpl;
+        } else {
+          this.provinceSvg = "";
+        }
+      }
+      this.infoText = "";
+      this.infoImg = "";
+    },
     showInfo() {
       if (!this.selectedId) {
         this.infoText = "请先随机选择一个省份";
@@ -163,8 +204,12 @@ randomHighlight() {
       const info = this.provinceInfo[this.selectedId];
       if (info) {
         this.infoText = `省份：${info.name}\n简称：${info.abbr}\n省会：${info.capital}`;
+        // 图片路径：public/img/省会.jpg
+        this.infoImg = `img/${info.capital}.jpg`;
+        this.infoImgAlt = info.capital;
       } else {
         this.infoText = "未找到该省份信息";
+        this.infoImg = "";
       }
     }
   }
@@ -174,33 +219,39 @@ randomHighlight() {
 <style scoped>
 .flex {
   display: flex;
-  align-items: center;
+  /* align-items: center; */
   height: 100vh;
 }
+
 .side-panel {
   margin-left: 20px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  padding-top: 40px;
+  /* 顶部空隙，可根据需要调整 */
 }
+
 .map-btn {
   display: inline-block;
   padding: 12px 32px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   font-size: 18px;
   font-weight: bold;
   color: #fff;
   background: linear-gradient(90deg, #ffb300 0%, #ff6f00 100%);
   border: none;
   border-radius: 24px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: background 0.2s, transform 0.1s;
 }
+
 .map-btn:hover {
   background: linear-gradient(90deg, #ff9800 0%, #f44336 100%);
   transform: translateY(-2px) scale(1.04);
 }
+
 /* 新增：优化信息显示区域样式 */
 .info-box {
   margin-top: 20px;
@@ -217,7 +268,17 @@ randomHighlight() {
   border: 1px solid #ffe082;
   transition: box-shadow 0.2s;
 }
+
 .info-box:empty {
   display: none;
+}
+
+.province-svg-box {
+  width: 70vw;
+  height: 50vw;
+  background: #EEE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
