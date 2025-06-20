@@ -6,11 +6,11 @@
 
 * 简单模式
 
-  ![easy](img_for_readme\easy_model.png)
+  ![easy](img_for_readme/easy_model.png)
 
 * 困难模式
 
-  ![hard](img_for_readme\hard_model.png)
+  ![hard](img_for_readme/hard_model.png)
 
 ## 使用意义
 
@@ -64,4 +64,4 @@ See [Configuration Reference](https://cli.vuejs.org/config/).
 
 ## 联系作者
 
-如果发现有什么省与图片不对应的情况，请发送邮件到2142341323@qq.com，看到了会回复（虽然平时不怎么看邮件）。
+如果发现有什么省与图片不对应等问题，请发送邮件到2142341323@qq.com或者提交pr，看到了会回复，（虽然平时不怎么看邮件）。
